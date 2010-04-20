@@ -4,7 +4,7 @@ use strict;
 use LWP::UserAgent ();
 use Carp ();
 
-our $VERSION = 0.01;
+our $VERSION = 0.02;
 
 our $DOMAIN   = 'antigate.com'; # service domain often changes because of the abuse
 our $WAIT     = 220;            # default time that recognize() or upload() can work
@@ -18,12 +18,16 @@ my %MESSAGES =
       'ERROR_WRONG_USER_KEY'           => 'wrong service key used',
       'ERROR_NO_SLOT_AVAILABLE'        => 'all recognizers are busy, try later',
       'ERROR_ZERO_CAPTCHA_FILESIZE'    => 'uploaded captcha size is zero',
-      'ERROR_TOO_BIG_CAPTCHA_FILESIZE' => 'uploaded captcha size is grater than 30 Kb',
+      'ERROR_TOO_BIG_CAPTCHA_FILESIZE' => 'uploaded captcha size is grater than 90 Kb',
       'ERROR_WRONG_FILE_EXTENSION'     => 'wrong extension of the uploaded captcha, allowed extensions are gif, jpg, png',
       'ERROR_IP_NOT_ALLOWED'           => 'this ip not allowed to use this account',
       'ERROR_WRONG_ID_FORMAT'          => 'captcha id should be number',
       'ERROR_NO_SUCH_CAPCHA_ID'        => 'no such captcha id in the database',
       'ERROR_URL_METHOD_FORBIDDEN'     => 'this upload method is already not supported',
+      'ERROR_IMAGE_IS_NOT_PNG'         => 'captcha is not correct png file',
+      'ERROR_IMAGE_IS_NOT_JPEG'        => 'captcha is not correct jpeg file',
+      'ERROR_IMAGE_IS_NOT_GIF'         => 'captcha is not correct gif file',
+      'ERROR_ZERO_BALANCE'             => 'you have a zero balance',
       'CAPCHA_NOT_READY'               => 'captcha is not recognized yet',
       'OK_REPORT_RECORDED'             => 'your abuse recorded'
 );
@@ -284,16 +288,18 @@ WebService::Antigate - Recognition of captches using antigate.com service (forme
 
 =over
 
-=item One-liner
+=item Simplest variant
 
  use WebService::Antigate;
 
- my $captcha = WebService::Antigate->new(key => 'd41d8cd98f00b204e9800998ecf8427e')->upload_and_recognize(file => "/tmp/Captcha.jpeg")
-       or die;
+ my $recognizer = WebService::Antigate->new(key => 'd41d8cd98f00b204e9800998ecf8427e');
+ 
+ my $captcha = $recognizer->upload_and_recognize(file => "/tmp/Captcha.jpeg")
+       or die $recognizer->errstr;
 
  print "Recognized captcha is: ", $captcha, "\n";
 
-=item Control uploading and recognition yourself
+=item More control
 
  use WebService::Antigate;
 
@@ -313,13 +319,14 @@ WebService::Antigate - Recognition of captches using antigate.com service (forme
 
  print "Recognized captcha is: ", $captcha, "\n";
 
-=item More control
+=item Control all operations yourself
 
  use WebService::Antigate;
 
  my $recognizer = WebService::Antigate->new(key => 'd41d8cd98f00b204e9800998ecf8427e');
 
- my $captcha_img = $recognizer->ua->get('http://some-site.com/captcha.php?id=4')->content; # will use captcha from variable, not from file for this example
+ # will use captcha from variable, not from file for this example
+ my $captcha_img = $recognizer->ua->get('http://some-site.com/captcha.php?id=4')->content;
 
  my $id;
  until($id = $recognizer->try_upload(content => $captcha_img))
@@ -367,15 +374,15 @@ to specify the initial state. The following options correspond to attribute meth
 Options description:
 
    key      - your service private key, which can be found here: http://antigate.com/panel.php?action=api
-   ua       - LWP::UserAgent object used to upload captcha and receive the result(captcha recognition)
+   ua       - LWP::UserAgent object used to upload captcha and receive the result (captcha recognition)
    domain   - current domain of the service, can be changed in the future
-   wait     - maximum waiting time until captcha will be accepted  (upload()) or recognized (recognize()) by the service
+   wait     - maximum waiting time until captcha will be accepted  ( upload() ) or recognized ( recognize() ) by the service
    delay    - delay time before next attempt of captcha uploading or recognition after previous failure
    attempts - maximum number of attempts that we can try_upload() or try_recognize()
    
-If you specify wait and attempts options at the same time, than we will try to upload()/recognize() until time over or
-attempts (which first).
-If you will not specify wait and attempts, than default value of wait will be used.
+If you specify `wait' and `attempts' options at the same time, than class will try to upload/recognize until time or attempts
+will over (which first).
+If you do not specify neither `wait', nor `attempts', than default value of `wait' will be used.
 
 =item $recognizer->key
 
@@ -420,7 +427,7 @@ This method gets or sets maximum number of attempts. See above.
 
 =item $recognizer->errno
 
-This method gets an error from previous unsuccessful operation. The Error is returned as s string constant
+This method gets an error from previous unsuccessful operation. The Error is returned as a string constant
 associated with this error type.
 
 =item $recognizer->errstr
@@ -434,9 +441,9 @@ This method tries to upload captcha image to the service. Here you can use the f
 
    KEY            DEFAULT       DESCRIPTION
    ----------     ----------    ------------
-   file            undef        path to file with captcha
+   file            undef        path to the file with captcha
    content         undef        captcha content
-   name            undef        represented name of file with captcha
+   name            undef        represented name of the file with captcha
    phrase          0            1 if captcha text have 2-4 words
    regsense        0            1 if that captcha text is case sensitive
    numeric         0            1 if that captcha text contains only digits, 2 if captcha text have no digits
@@ -444,7 +451,7 @@ This method tries to upload captcha image to the service. Here you can use the f
    min_len         0            minimum length of the captcha text (0..20)
    max_len         0            maximum length of the captcha text (0..20), 0 - no limits
    
-You must specify either `file' option or `content'. Other options are optional. If you want to upload captcha from variable
+You must specify either `file' option or `content'. Other options are facultative. If you want to upload captcha from variable
 (`content' option) instead from file you must specify the name of the file with `name' option. Otherwise $WebService::Antigate::FNAME
 will be used as captcha name. You also can change file name with `name' option if you uploading captcha from file.
 On success captcha id is returned. On failure returns undef and sets errno and errstr.
@@ -452,7 +459,7 @@ On success captcha id is returned. On failure returns undef and sets errno and e
 =item $recognizer->upload(%options)
 
 This method attempts to upload a captcha image to the service until exceeds allotted time limit or attempts or a captcha
-will not be recognized. The parameter %options is identical with the one in method try_upload(). On success will return
+will not be uploaded. The parameter %options is identical with the one in method try_upload(). On success will return
 captcha id. On failure returns undef and sets errno and errstr.
 
 =item $recognizer->try_recognize($captcha_id)
