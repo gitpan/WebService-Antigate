@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:               WebService-Antigate
-version:            0.04
+version:            0.05
 abstract:           Recognition of captches using antigate.com service (former anti-captcha.com)
 author:
     - Oleg G <oleg@cpan.org>
